@@ -190,7 +190,7 @@ corestart_main(uint32_t __unused, uint32_t machine_type, struct atag *atags)
     is_malloc_inited = 1;
 
     /* Bringup boot-args. */
-    strncpy(gBootArgs.commandLine, "rd=md0 -v serial=2", BOOT_LINE_LENGTH);
+    strncpy(gBootArgs.commandLine, "rd=md0 -v -s serial=2", BOOT_LINE_LENGTH);
 #endif
 
     if (!is_malloc_inited)

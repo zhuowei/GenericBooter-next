@@ -103,13 +103,14 @@ loader_return_t macho_get_entrypoint(loader_context_t * ctx, uint32_t * ep)
  *
  * Copy all of the mach-o segments to the proper addresses.
  */
-loader_return_t macho_file_map(loader_context_t * ctx, uint32_t loadaddr)
+loader_return_t macho_file_map(loader_context_t * ctx, uint32_t loadaddr, uint32_t slide)
 {
     mach_header_t *mh = (mach_header_t *) ctx->source;
     struct load_command *lc = (struct load_command *)((mach_header_t *) mh + 1);
     uint32_t vmsize_count = 0;
     uint32_t vm_bias = ctx->vm_bias;
 
+    /* First pass, fix up header and initialize symtab/pcval. */
     for_each_lc(lc, mh) {
         /* Only segments for mapping */
         if (lc->cmd == kLoadCommandSegment) {
@@ -122,17 +123,51 @@ loader_return_t macho_file_map(loader_context_t * ctx, uint32_t loadaddr)
             /* Get the load address */
             our_vmaddr = sc->vmaddr - vm_bias;
 
-            /* Map the binary now */
+            /* If we have a slide, fix it up now. */
+            if(slide) {
+                /* Remove the original... */
+                sc->vmaddr -= vm_bias;
+
+                /* ...and add the new slide. */
+                sc->vmaddr += slide;
+
+                /* See if we have any sections inside we need to fix up. */
+                struct section* sect;
+                for_each_section(sect, sc) {
+                    sect->addr -= vm_bias;
+                    sect->addr += slide;
+                }
+            }
+
+        } else if (lc->cmd == kLoadCommandDsymtab) {
+            ctx->dsymtab = (struct dysymtab_command *)lc;
+        } else if (lc->cmd == kLoadCommandUnixThread) {
+            /* UnixThread has the entrypoint. */
+            thread_command_t *tc = (thread_command_t *) lc;
+            ctx->entry = tc->state.pc;
+        }
+    }
+
+    /* Patching done, now copy the segments. */
+    lc = (struct load_command *)((mach_header_t *) mh + 1);
+    for_each_lc(lc, mh) {
+        /* Only segments for mapping */
+        if (lc->cmd == kLoadCommandSegment) {
+            struct segment_command *sc = (struct segment_command *)lc;
+            uint32_t our_vmaddr;
+
+            /* Add up the vm size */
+            vmsize_count += sc->vmsize;
+
+            /* Get the load address */
+            our_vmaddr = sc->vmaddr - slide;
+
+            /* Copy it now. */
             if (sc->filesize) {
                 bcopy((void *)
                       add_ptr2(ctx->source, sc->fileoff),
                       (void *)add_ptr2(loadaddr, our_vmaddr), sc->filesize);
             }
-
-        } else if (lc->cmd == kLoadCommandUnixThread) {
-            /* UnixThread has the entrypoint. */
-            thread_command_t *tc = (thread_command_t *) lc;
-            ctx->entry = tc->state.pc;
         }
     }
 
@@ -155,8 +190,49 @@ uint32_t macho_get_vmsize(loader_context_t * ctx)
         if (lc->cmd == kLoadCommandSegment) {
             struct segment_command *sc = (struct segment_command *)lc;
             vmsize_count += sc->vmsize;
+        /* Technically, another pass on the MachO file in a new function would do too. */
+        } else if (lc->cmd == kLoadCommandDsymtab) {
+            ctx->dsymtab = (struct dysymtab_command *)lc;
         }
     }
 
     return vmsize_count;
+}
+
+/**
+ * macho_rebase
+ */
+loader_return_t macho_rebase(loader_context_t * ctx, uint32_t slide)
+{
+    assert(ctx->dsymtab);
+    struct relocation_info* rbase = (struct relocation_info *)add_ptr2(ctx->source, ctx->dsymtab->locreloff);;
+
+    /* Fix up MachO rebase information. */
+    for (uint32_t i = 0; i < ctx->dsymtab->nlocrel; i++)
+    {
+        struct relocation_info* rinfo = &rbase[i]; /* Relocation offset */
+        
+        if (rinfo->r_address & R_SCATTERED)
+        {
+            panic("R_SCATTERED not supported yet!");
+        }
+        else
+        {
+            if (rinfo->r_length != 2) {
+                return kLoadBadImage;
+            }
+            if (rinfo->r_type != GENERIC_RELOC_VANILLA) {
+                return kLoadBadImage;
+            }
+            if (rinfo->r_symbolnum == R_ABS) {
+                return kLoadBadImage;
+            }
+            
+            /* Relocate */
+            uint32_t* pp = (uint32_t*)add_ptr2(ctx->source, rinfo->r_address);
+            *pp = (*pp - ctx->vm_bias + slide);
+        }
+    }
+
+    return kLoadSuccess;
 }

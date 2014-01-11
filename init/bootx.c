@@ -35,7 +35,8 @@
 #include "helper.h"
 #include <stdio.h>
 
-#define KERNEL_VMADDR   0x80001000
+#define KERNEL_VMADDR       0x80001000
+#define KERNEL_VMADDR_SLIDE 0x80001000
 
 extern void *__end;
 memory_region_t kernel_region;
@@ -255,7 +256,12 @@ int prepare_kernel(void)
         (uintptr_t) memory_region_reserve(&kernel_region, kernelSize, 0);
     printf("Loading kernel at 0x%08x\n", kernelBase, kernelSize);
 
-    assert(!macho_file_map(&ctx, kernelBase));
+    printf("Slidden address at 0x%08x\n", KERNEL_VMADDR_SLIDE);
+
+    assert(!macho_rebase(&ctx, KERNEL_VMADDR_SLIDE));
+
+    assert(!macho_set_vm_bias(&ctx, KERNEL_VMADDR));
+    assert(!macho_file_map(&ctx, kernelBase, KERNEL_VMADDR_SLIDE));
     assert(!macho_get_entrypoint(&ctx, &kernel_entrypoint));
 
     kernel_entrypoint =
@@ -271,7 +277,7 @@ static int prepare_boot_args(void)
 {
     gBootArgs.Revision = kBootArgsRevision;
     gBootArgs.Version = kBootArgsVersion2;
-    gBootArgs.virtBase = 0x80000000;
+    gBootArgs.virtBase = KERNEL_VMADDR_SLIDE & 0xFFFF0000;
     return true;
 }
 
@@ -461,21 +467,21 @@ int prepare_devicetree_stage2(void)
     void *ramdiskImage;
 
     ramdiskImage = get_image3('rdsk');
-    assert(ramdiskImage != NULL);
-    image3_get_tag_data(ramdiskImage, kImage3TagData, (void**)&ramdisk_base,
-                        &ramdisk_size);
-
-    if (ramdisk_base) {
-        void *reloc_ramdisk_base =
-            (void *)memory_region_reserve(&kernel_region, ramdisk_size,
-                                          4096);
-        printf
-            ("creating ramdisk at 0x%x of size 0x%x, from image at 0x%x\n",
-             reloc_ramdisk_base, ramdisk_size, ramdisk_base);
-        bcopy((void *)ramdisk_base, reloc_ramdisk_base, ramdisk_size);
-        AllocateMemoryRange(memory_map, "RAMDisk",
-                            (uint32_t) reloc_ramdisk_base, ramdisk_size,
-                            kBootDriverTypeInvalid);
+    if(ramdiskImage) {
+        image3_get_tag_data(ramdiskImage, kImage3TagData, (void**)&ramdisk_base,
+                            &ramdisk_size); 
+        if (ramdisk_base) {
+            void *reloc_ramdisk_base =
+                (void *)memory_region_reserve(&kernel_region, ramdisk_size,
+                                               4096);
+            printf
+                ("creating ramdisk at 0x%x of size 0x%x, from image at 0x%x\n",
+                 reloc_ramdisk_base, ramdisk_size, ramdisk_base);
+            bcopy((void *)ramdisk_base, reloc_ramdisk_base, ramdisk_size);
+            AllocateMemoryRange(memory_map, "RAMDisk",
+                                (uint32_t) reloc_ramdisk_base, ramdisk_size,
+                                kBootDriverTypeInvalid);
+        }
     }
 
     /* Check for mkexts. */
