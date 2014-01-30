@@ -46,6 +46,10 @@ config BOARD_AM335X
 	bool "Texas Instruments AM335X"
 	depends on PROC_CORTEX_A8
 
+config BOARD_GOLDFISH
+	bool "Android Emulator Goldfish"
+	depends on PROC_CORTEX_A8
+
 endchoice
 
 choice

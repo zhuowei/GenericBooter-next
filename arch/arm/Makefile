@@ -21,6 +21,7 @@ platname-$(CONFIG_BOARD_AM335X) 		+= "AM335X"
 platname-$(CONFIG_BOARD_ARM_REALVIEW) 	+= "RealView"
 platname-$(CONFIG_BOARD_HPTOUCHPAD)		+= "HP-TouchPad"
 platname-$(CONFIG_BOARD_HTC_HD2)		+= "HTC-HD2"
+platname-$(CONFIG_BOARD_GOLDFISH)		+= "Goldfish"
 
 export platname-y := $(platname-y)
 
@@ -50,6 +51,7 @@ textofs-$(CONFIG_BOARD_ARM_REALVIEW)	:= 0x84000040
 textofs-$(CONFIG_BOARD_HPTOUCHPAD)	:= 0x44000040
 
 textofs-$(CONFIG_BOARD_HTC_HD2)		:= 0x11808000
+textofs-$(CONFIG_BOARD_GOLDFISH)	:= 0x04000040
 
 export TEXT_OFFSET := $(textofs-y)
 
@@ -79,5 +81,6 @@ core-$(CONFIG_BOARD_AM335X) 		+= arch/arm/plat-am335x/
 core-$(CONFIG_BOARD_ARM_REALVIEW) 	+= arch/arm/plat-realview/
 core-$(CONFIG_BOARD_HPTOUCHPAD)		+= arch/arm/plat-hptouchpad/
 core-$(CONFIG_BOARD_HTC_HD2)		+= arch/arm/plat-htchd2/
+core-$(CONFIG_BOARD_GOLDFISH)		+= arch/arm/plat-goldfish/
 
 core-y				+= arch/arm/common/

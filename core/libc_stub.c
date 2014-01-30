@@ -344,3 +344,7 @@ char *gets(char *str)
 {
     return NULL;
 }
+
+void raise(int i)
+{
+}
